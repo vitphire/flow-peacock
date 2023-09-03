@@ -277,13 +277,23 @@ export function requestLoggingMiddleware(
     res: Response,
     next?: NextFunction,
 ): void {
+    const originalSend = res.send
+    let response = {}
+
+    res.send = function (body) {
+        response = body
+        return originalSend.call(this, body)
+    }
+
     res.once("finish", () => {
+
         const debug = {
             method: req.method,
             url: req.url,
             body: req.body,
             statusCode: res.statusCode,
             statusMessage: res.statusMessage,
+            response: response,
         }
 
         log(LogLevel.DEBUG, JSON.stringify(debug), LogCategory.HTTP)
