@@ -45,33 +45,47 @@ import {
     SteamScpcStrategy,
 } from "./entitlementStrategies"
 import { getFlag } from "./flags"
-import axios from "axios"
+import picocolors from "picocolors"
 
 export const JWT_SECRET =
     getFlag("developmentAllowRuntimeRestart") || PEACOCK_DEV
         ? "secret"
         : randomBytes(32).toString("hex")
 
-export let OFFICIAL_ACCESS_TOKEN = ""
+/*
+    Log the official server response to the console.
+ */
+export async function logOfficialResponse(req: RequestWithJwt, officialUrl: string) {
+    const user = userAuths.get(req.body.pId)
+
+    if (!user) {
+        log(LogLevel.ERROR, "No user found for official server response.")
+        return
+    }
+
+    const officialServerResponse = await user._useService(
+        officialUrl,
+        req.method === "GET",
+        req.body,
+    )
+
+    const debug = {
+        method: req.method,
+        url: req.url,
+        body: req.body,
+        statusCode: officialServerResponse.status,
+        statusMessage: officialServerResponse.statusText,
+        response: officialServerResponse.data,
+    }
+    log(LogLevel.DEBUG,
+        picocolors.greenBright("Official server response: ")
+        +JSON.stringify(debug))
+}
 
 export async function handleOauthToken(
     req: RequestWithJwt,
     res: Response,
 ): Promise<void> {
-    // Forward the request to the official server and log the response.
-    const officialHeaders = req.headers
-    delete officialHeaders["host"]
-    delete officialHeaders["content-length"]
-    officialHeaders["Content-Type"] = "application/x-www-form-urlencoded"
-    const officialServerResponse = await axios.post(
-        "https://auth.hitman.io/oauth/token",
-        req.body,
-        {
-            headers: officialHeaders
-        }
-    )
-    OFFICIAL_ACCESS_TOKEN = officialServerResponse.data.access_token
-    log(LogLevel.DEBUG, `Official server response: ${JSON.stringify(officialServerResponse.data)}`)
 
     const isFrankenstein = req.body.gs === "scpc-prod"
 
