@@ -56,7 +56,7 @@ export const JWT_SECRET =
     Log the official server response to the console.
  */
 export async function logOfficialResponse(req: RequestWithJwt, officialUrl: string) {
-    const user = userAuths.get(req.body.pId)
+    const user = userAuths.get(req.jwt.unique_name)
 
     if (!user) {
         log(LogLevel.ERROR, "No user found for official server response.")
@@ -64,7 +64,7 @@ export async function logOfficialResponse(req: RequestWithJwt, officialUrl: stri
     }
 
     const officialServerResponse = await user._useService(
-        officialUrl,
+        officialUrl + req.originalUrl,
         req.method === "GET",
         req.body,
     )
