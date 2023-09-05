@@ -58,6 +58,7 @@ import {
     inclusionDataCheck,
 } from "./candle/challengeHelpers"
 import { LoadSaveBody } from "./types/gameSchemas"
+import { logOfficialResponse } from "./oauthToken"
 
 const profileRouter = Router()
 
@@ -160,7 +161,7 @@ profileRouter.post("/ProfileService/GetUserConfig", (req, res) => {
 profileRouter.post(
     "/ProfileService/GetProfile",
     jsonMiddleware(),
-    (req: RequestWithJwt, res) => {
+    async (req: RequestWithJwt, res) => {
         if (req.body.id !== req.jwt.unique_name) {
             res.status(403).end() // data requested for different profile id
             log(
@@ -169,6 +170,8 @@ profileRouter.post(
             )
             return
         }
+
+        await logOfficialResponse(req, "https://hm3-service.hitman.io")
 
         const userdata = getUserData(req.jwt.unique_name, req.gameVersion)
         const extensions = req.body.extensions.reduce((acc: object, key: string) => {
@@ -228,12 +231,14 @@ profileRouter.post(
 profileRouter.post(
     "/ProfileService/SynchroniseGameStats",
     jsonMiddleware(),
-    (req: RequestWithJwt, res) => {
+    async (req: RequestWithJwt, res) => {
         if (req.body.profileId !== req.jwt.unique_name) {
             // data requested for different profile id
             res.status(403).end()
             return
         }
+
+        await logOfficialResponse(req, "https://hm3-service.hitman.io")
 
         const userdata = getUserData(req.jwt.unique_name, req.gameVersion)
 
