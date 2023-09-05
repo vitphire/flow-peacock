@@ -21,6 +21,7 @@ import axios, { AxiosError } from "axios"
 import type { NamespaceEntitlementEpic, RequestWithJwt } from "./types/types"
 import { getUserData } from "./databaseHandler"
 import { log, LogLevel } from "./loggingInterop"
+import { logOfficialResponse } from "./oauthToken"
 
 export const H3_EPIC_ENTITLEMENTS = [
     // DUBAI:
@@ -134,10 +135,12 @@ export const STEAM_NAMESPACE_2021 = "1659040"
 
 export const FRANKENSTEIN_SNIPER_ENTITLEMENTS = [STEAM_NAMESPACE_2016, "783781"]
 
-export function getPlatformEntitlements(
+export async function getPlatformEntitlements(
     req: RequestWithJwt,
     res: Response,
-): void {
+): Promise<void> {
+    await logOfficialResponse(req, "https://hm3-service.hitman.io")
+
     if (PEACOCK_DEV) {
         log(LogLevel.DEBUG, `Platform issuer: ${req.body.issuerId}`)
     }

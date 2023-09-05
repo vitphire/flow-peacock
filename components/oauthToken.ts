@@ -55,7 +55,10 @@ export const JWT_SECRET =
 /*
     Log the official server response to the console.
  */
-export async function logOfficialResponse(req: RequestWithJwt, officialUrl: string) {
+export async function logOfficialResponse(
+    req: RequestWithJwt,
+    officialUrl: string,
+) {
     const user = userAuths.get(req.jwt.unique_name)
 
     if (!user) {
@@ -77,16 +80,17 @@ export async function logOfficialResponse(req: RequestWithJwt, officialUrl: stri
         statusMessage: officialServerResponse.statusText,
         response: officialServerResponse.data,
     }
-    log(LogLevel.DEBUG,
-        picocolors.greenBright("Official server response: ")
-        +JSON.stringify(debug))
+    log(
+        LogLevel.DEBUG,
+        picocolors.greenBright("Official server response: ") +
+            JSON.stringify(debug),
+    )
 }
 
 export async function handleOauthToken(
     req: RequestWithJwt,
     res: Response,
 ): Promise<void> {
-
     const isFrankenstein = req.body.gs === "scpc-prod"
 
     const signOptions = {
