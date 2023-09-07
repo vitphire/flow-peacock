@@ -75,6 +75,7 @@ export async function logOfficialResponse(
     const debug = {
         method: req.method,
         url: req.url,
+        officialUrl: officialUrl + req.originalUrl,
         body: req.body,
         statusCode: officialServerResponse.status,
         statusMessage: officialServerResponse.statusText,

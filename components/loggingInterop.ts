@@ -286,10 +286,9 @@ export function requestLoggingMiddleware(
     }
 
     res.once("finish", () => {
-
         const debug = {
             method: req.method,
-            url: req.url,
+            url: req.originalUrl,
             body: req.body,
             statusCode: res.statusCode,
             statusMessage: res.statusMessage,
