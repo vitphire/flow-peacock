@@ -16,6 +16,7 @@
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+import * as carryOverUserData from "./carryOverUserData"
 import * as configSwizzleManager from "./configSwizzleManager"
 import * as controller from "./controller"
 import * as databaseHandler from "./databaseHandler"
@@ -86,6 +87,10 @@ import * as types from "./types/types"
 import * as escalationService from "./contracts/escalations/escalationService"
 
 export default {
+    "@peacockproject/core/carryOverUserData": {
+        __esModule: true,
+        ...carryOverUserData,
+    },
     "@peacockproject/core/configSwizzleManager": {
         __esModule: true,
         ...configSwizzleManager,
