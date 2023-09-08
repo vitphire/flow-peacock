@@ -46,6 +46,7 @@ import {
 } from "./entitlementStrategies"
 import { getFlag } from "./flags"
 import picocolors from "picocolors"
+import { carryOverUserData } from "./carryOverUserData"
 
 export const JWT_SECRET =
     getFlag("developmentAllowRuntimeRestart") || PEACOCK_DEV
@@ -59,6 +60,10 @@ export async function logOfficialResponse(
     req: RequestWithJwt,
     officialUrl: string,
 ) {
+    if (!getFlag("developmentLogRequests")) {
+        return
+    }
+
     const user = userAuths.get(req.jwt.unique_name)
 
     if (!user) {
@@ -252,6 +257,11 @@ export async function handleOauthToken(
     }
 
     let userData = getUserData(req.body.pId, gameVersion)
+
+    if (userData === undefined && gameVersion === "h3") {
+        // Try to carry over the user data from the official server.
+        userData = await carryOverUserData(req.body.pId, gameVersion)
+    }
 
     if (userData === undefined) {
         // User does not exist, create new profile from default:
