@@ -16,74 +16,203 @@
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { GameVersion, UserProfile } from "./types/types"
-import { userAuths } from "./officialServerAuth"
+import { CompiledChallengeRuntimeData, GameVersion, UserProfile } from "./types/types"
+import { OfficialServerAuth, userAuths } from "./officialServerAuth"
 import { log, LogLevel } from "./loggingInterop"
 import { missionsInLocations } from "./contracts/missionsInLocation"
-import { AxiosResponse } from "axios"
 import { getVersionedConfig } from "./configSwizzleManager"
 
-export async function carryOverUserData(pId: string, gameVersion: GameVersion) {
-    const user = userAuths.get(pId)
-
-    if (!user) {
-        return undefined
+interface GetProfileBody {
+    DevId: null | string
+    SteamId: null | string
+    StadiaId: null | string
+    EpicId: null | string
+    NintendoId: null | string
+    XboxLiveId: null | string
+    PSNAccountId: null | string
+    PSNOnlineId: null | string
+    Id: string
+    LinkedAccounts: {
+        dev?: string
+        epic?: string
+        steam?: string
+        gog?: string
+        xbox?: string
+        stadia?: string
     }
+    ETag: null | string
+    Gamertag: string
+    Extensions: {
+        achievements: `${number}`[]
+        friends: string[]
+        gameclient: null | unknown // TODO: get steam response
+        gamepersistentdata: {
+            __stats?: unknown
+            prologue: {
+                "proceed-intro": boolean
+            }
+            menudata: {
+                destinations: unknown
+                planning: unknown
+                newunlockables: string[]
+            }
+            PersistentBool: Record<string, unknown>
+            IsFSPUser: boolean
+            VideoShown: Record<string, boolean>
+            HitsFilterType: {
+                // "all" / "completed" / "failed"
+                MyHistory: string
+                MyContracts: string
+                MyPlaylist: string
+            }
+            EpilogueSeen: Record<string, boolean>
+        }
+        opportunityprogression: Record<string, string>
+        progression: {
+            XPGain: number
+            secondsToNextDrop: number
+            secondsElapsed: number
+            LastCompletedChallenge: string
+            Locations: Record<
+                string,
+                {
+                    Xp: number
+                    PreviouslySeenXp: number
+                    LastCompletedChallenge: string
+                    PreviouslySeenStaging: object
+                    Level: number
+                }
+            >
+            PlayerProfileXP: {
+                Total: number
+                PreviouslySeenTotal: number
+                ProfileLevel: number
+                PreviouslySeenStaging: object
+                Sublocations: {
+                    Location: string
+                    Xp: number
+                    ActionXp: number
+                }[]
+            }
+            LastScore: number
+            TimeDropDelta: number
+            Unlockables: Record<
+                string,
+                {
+                    Xp: number
+                    PreviouslySeenXp: number
+                    LastCompletedChallenge: string
+                    PreviouslySeenStaging: object
+                    Level: number
+                }
+            >
+        }
+    }
+}
+interface GetPlayerProfileBody {
+    template: unknown
+    data: {
+        SubLocationData: {
+            ParentLocation: object
+            Location: object
+            CompletionData: {
+                Level: number
+                MaxLevel: number
+                XP: number
+                Completion: number
+                XpLeft: number
+                Id: string
+                SubLocationId: string
+                HideProgression: boolean
+                IsLocationProgression: boolean
+                Name: null | unknown
+            }
+            ChallengeCategoryCompletion: {
+                Name: string
+                CompletedChallengesCount: number
+                ChallengesCount: number
+            }[]
+            ChallengeCompletion: {
+                ChallengesCount: number
+                CompletedChallengesCount: number
+                CompletionPercent: number
+            }
+            OpportunityStatistics: {
+                Count: number
+                Completed: number
+            }
+            LocationCompletionPercent: number
+        }[]
+        PlayerProfileXp: {
+            Total: number
+            Level: number
+            Seasons: {
+                Number: number
+                Locations: {
+                    LocationId: string
+                    Xp: number
+                    ActionXp: number
+                    LocationProgression: {
+                        Level: number
+                        MaxLevel: number
+                    }
+                }[]
+            }[]
+        }
+    }
+}
 
-    const officialResponses: {
-        GetProfile: object
-        PlayerProfile: object
-        Challenges: Map<string, object>
-    } = { GetProfile: {}, PlayerProfile: {}, Challenges: new Map() }
-
-    // GetProfile request to official server
-    const responseGetProfile = await user._useService(
+async function requestGetProfile(user: OfficialServerAuth) {
+    const response = await user._useService<GetProfileBody>(
         "https://hm3-service.hitman.io/authentication/api/userchannel" +
             "/ProfileService/GetProfile",
         false,
         {
             id: "22ebbd4b-062f-4321-81b8-03f74ab161bc",
             extensions: [
-                // TODO: Remove extensions that are not needed.
                 "achievements",
-                "cliententitlements",
-                "contractsession",
-                "defaultloadout",
                 "friends",
                 "gameclient",
                 "gamepersistentdata",
-                "inventory",
-                "migration",
                 "opportunityprogression",
                 "progression",
-                "UserConfigSettings",
             ],
         },
     )
 
-    if (responseGetProfile.status !== 200) {
-        log(LogLevel.ERROR, "Error getting user profile from official server.")
-        return undefined
+    if (response.status !== 200) {
+        throw new Error("Error getting user profile from official server.")
     } else {
-        officialResponses.GetProfile = responseGetProfile.data
+        return response.data
     }
+}
 
-    // PlayerProfile request to official server
-    const responsePlayerProfile = await user._useService(
+async function requestPlayerProfile(user: OfficialServerAuth) {
+    const response = await user._useService<GetPlayerProfileBody>(
         "https://hm3-service.hitman.io/profiles/page/PlayerProfile",
         true,
     )
 
-    if (responsePlayerProfile.status !== 200) {
-        log(
-            LogLevel.ERROR,
-            "Error getting player profile from official server.",
-        )
-        return undefined
+    if (response.status !== 200) {
+        throw new Error("Error getting user profile from official server.")
     } else {
-        officialResponses.PlayerProfile = responsePlayerProfile.data.data
+        return response.data.data
     }
+}
 
+function requestMapChallenges(user: OfficialServerAuth, location: string) {
+    return user._useService<CompiledChallengeRuntimeData>(
+        "https://hm3-service.hitman.io/authentication/api/userchannel" +
+            "/ChallengesService/GetActiveChallengesAndProgression",
+        false,
+        {
+            contractId: location,
+            difficultyLevel: 2,
+        },
+    )
+}
+
+async function requestChallenges(user: OfficialServerAuth) {
     /*
      This is probably not the most efficient way to do this, but I haven't
      found an endpoint that returns all challenges,
@@ -92,19 +221,12 @@ export async function carryOverUserData(pId: string, gameVersion: GameVersion) {
     */
 
     const locations = collectStrings(missionsInLocations)
-    const promises: Promise<
-        AxiosResponse<{ Challenge: object; Progression: object }[]>
-    >[] = []
+    const promises = []
 
     for (const locationsKey in locations) {
-        const responseMapChallenges = user._useService(
-            "https://hm3-service.hitman.io/authentication/api/userchannel" +
-                "/ChallengesService/GetActiveChallengesAndProgression",
-            false,
-            {
-                contractId: locations[locationsKey],
-                difficultyLevel: 2,
-            },
+        const responseMapChallenges = requestMapChallenges(
+            user,
+            locations[locationsKey],
         )
 
         log(
@@ -116,27 +238,41 @@ export async function carryOverUserData(pId: string, gameVersion: GameVersion) {
         promises.push(responseMapChallenges)
     }
 
-    await Promise.all(promises).then((responses) => {
-        for (const response of responses) {
-            if (response.status !== 200) {
-                log(
-                    LogLevel.ERROR,
-                    "Error getting map challenges from official server." +
-                        ` (${response.data["contractId"]})`,
-                )
-                return undefined
-            } else {
-                for (const challenge of response.data) {
-                    officialResponses.Challenges.set(
-                        challenge.Challenge["Id"],
-                        challenge,
-                    )
-                }
+    const responses = await Promise.all(promises)
+    const challenges = new Map()
+
+    for (const response of responses) {
+        if (response.status !== 200) {
+            throw new Error(
+                "Error getting map challenges from official server." +
+                    ` (${response.request.body.contractId})`,
+            )
+        } else {
+            for (const challenge of response.data) {
+                challenges.set(challenge.Challenge.Id, challenge)
             }
         }
+    }
 
-        return undefined
-    })
+    return challenges
+}
+
+async function getOfficialResponses(pId: string) {
+    const user = userAuths.get(pId)
+
+    if (!user) {
+        throw new Error("User not found.")
+    }
+
+    return {
+        GetProfile: await requestGetProfile(user),
+        PlayerProfile: await requestPlayerProfile(user),
+        Challenges: await requestChallenges(user),
+    }
+}
+
+export async function carryOverUserData(pId: string, gameVersion: GameVersion) {
+    const oResp = await getOfficialResponses(pId)
 
     const userData = getVersionedConfig(
         "UserDefault",
@@ -158,14 +294,13 @@ export async function carryOverUserData(pId: string, gameVersion: GameVersion) {
         "PSNAccountId",
         "PSNOnlineId",
     ]) {
-        userData[key] = officialResponses.GetProfile[key]
+        userData[key] = oResp.GetProfile[key]
     }
 
-    userData.Extensions["gameclient"] =
-        officialResponses.GetProfile["Extensions"].gameclient
+    userData.Extensions["gameclient"] = oResp.GetProfile.Extensions.gameclient
+
     const progression = userData.Extensions.progression
-    const officialProgression =
-        officialResponses.GetProfile["Extensions"].progression
+    const officialProgression = oResp.GetProfile.Extensions.progression
 
     for (const key of [
         "XPGain",
@@ -178,9 +313,7 @@ export async function carryOverUserData(pId: string, gameVersion: GameVersion) {
         progression[key] = officialProgression[key]
     }
 
-    for (const sublocation of officialResponses.PlayerProfile[
-        "SubLocationData"
-    ]) {
+    for (const sublocation of oResp.PlayerProfile.SubLocationData) {
         const location = progression.Locations[sublocation.CompletionData.Id]
 
         // TODO: Make this work for scpc
@@ -200,7 +333,7 @@ export async function carryOverUserData(pId: string, gameVersion: GameVersion) {
         }
     }
 
-    const officialProfileXp = officialResponses.PlayerProfile["PlayerProfileXp"]
+    const officialProfileXp = oResp.PlayerProfile.PlayerProfileXp
     progression.PlayerProfileXP.Total = officialProfileXp.Total
     progression.PlayerProfileXP["PreviouslySeenTotal"] =
         officialProgression.PlayerProfileXP.PreviouslySeenTotal
@@ -222,10 +355,11 @@ export async function carryOverUserData(pId: string, gameVersion: GameVersion) {
 
     const gamepersistentdata = userData.Extensions.gamepersistentdata
     const officialGamePersistentData =
-        officialResponses.GetProfile["Extensions"].gamepersistentdata
+        oResp.GetProfile.Extensions.gamepersistentdata
 
     gamepersistentdata["IsFSPUser"] = officialGamePersistentData.IsFSPUser
     gamepersistentdata["prologue"] = officialGamePersistentData.prologue
+
     gamepersistentdata.menudata.newunlockables =
         officialGamePersistentData.menudata.newunlockables
     gamepersistentdata.menudata["persistentdatacomponent"] = {
@@ -234,6 +368,7 @@ export async function carryOverUserData(pId: string, gameVersion: GameVersion) {
     }
     gamepersistentdata.menudata["destinations"] =
         officialGamePersistentData.menudata.destinations
+
     gamepersistentdata.PersistentBool =
         officialGamePersistentData.PersistentBool
     gamepersistentdata["VideoShown"] = officialGamePersistentData.VideoShown
@@ -241,7 +376,7 @@ export async function carryOverUserData(pId: string, gameVersion: GameVersion) {
     gamepersistentdata["__stats"] = officialGamePersistentData.__stats
 
     const officialOpportunityProgression =
-        officialResponses.GetProfile["Extensions"].opportunityprogression
+        oResp.GetProfile.Extensions.opportunityprogression
     userData.Extensions.opportunityprogression = Object.keys(
         officialOpportunityProgression,
     ).reduce((result: object, key) => {
@@ -249,18 +384,16 @@ export async function carryOverUserData(pId: string, gameVersion: GameVersion) {
         return result
     }, {}) // Convert to boolean
 
-    userData.Extensions["friends"] =
-        officialResponses.GetProfile["Extensions"].friends
+    userData.Extensions["friends"] = oResp.GetProfile.Extensions.friends
 
     // TODO: CPD
 
-    userData.Extensions.achievements =
-        officialResponses.GetProfile["Extensions"].achievements
+    userData.Extensions.achievements = oResp.GetProfile.Extensions.achievements
 
     userData.Extensions.ChallengeProgression = {}
 
-    for (const challenge of officialResponses.Challenges.values()) {
-        const challengeProgression = challenge["Progression"]
+    for (const challenge of oResp.Challenges.values()) {
+        const challengeProgression = challenge.Progression
         userData.Extensions.ChallengeProgression[
             challengeProgression.ChallengeId
         ] = {
@@ -271,13 +404,6 @@ export async function carryOverUserData(pId: string, gameVersion: GameVersion) {
                 challengeProgression.CompletedAt !== null,
             CurrentState: challengeProgression.State.CurrentState ?? "Start",
             State: challengeProgression.State,
-        }
-
-        if (
-            challengeProgression.ChallengeId ===
-            "7107ff08-2d82-4abd-83e5-57d0e1b919ff"
-        ) {
-            console.log(challengeProgression)
         }
     }
 
