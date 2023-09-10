@@ -125,6 +125,22 @@ const defaultFlags: Flags = {
         desc: `[Gameplay] Set this to true to add all the default starting suits to your inventory. Note: If you set both this and "enableMasteryProgression" to "true" at the same time, a starting suit that is also the unlock for a challenge/mastery will be locked behind its challenge/mastery.`,
         default: false,
     },
+    downloadContractHistory: {
+        desc: `[Official Carry-over] When set to true, Peacock will download all contracts you have played in the past from the official servers. This will take some time the first time you load the game.`,
+        default: false,
+    },
+    downloadContractHistoryLimit: {
+        desc: `[Official Carry-over] The maximum number of contracts to download from the official servers. Set to 0 to download all contracts.`,
+        default: 0,
+    },
+    downloadMyContracts: {
+        desc: `[Official Carry-over] When set to true, Peacock will download all contracts you have created from the official servers. This will take more or less time based on how many contracts you've made.`,
+        default: false,
+    },
+    downloadFavorites: {
+        desc: `[Official Carry-over] When set to true, Peacock will download all contracts you have favorited from the official servers. This will take some time the first time you load the game.`,
+        default: true,
+    },
 }
 
 const OLD_FLAGS_FILE = "flags.json5"

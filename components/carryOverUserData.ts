@@ -30,6 +30,7 @@ import { getVersionedConfig } from "./configSwizzleManager"
 import { controller } from "./controller"
 import { handleEvent } from "@peacockproject/statemachine-parser"
 import { StateMachineLike } from "@peacockproject/statemachine-parser/src/types"
+import { getFlag } from "./flags"
 
 interface GetProfileBody {
     DevId: null | string
@@ -293,14 +294,18 @@ async function requestChallenges(user: OfficialServerAuth) {
     return challenges
 }
 
-async function requestHitsCategory(user: OfficialServerAuth, type: string, page: number) {
-    return (await user._useService<
-        HitsCategoryBody
-    >(
-        "https://hm3-service.hitman.io/profiles/page/HitsCategory" +
-        `?page=${page}&type=${type}&mode=dataonly`,
-        true,
-    )).data.data
+async function requestHitsCategory(
+    user: OfficialServerAuth,
+    type: string,
+    page: number,
+) {
+    return (
+        await user._useService<HitsCategoryBody>(
+            "https://hm3-service.hitman.io/profiles/page/HitsCategory" +
+                `?page=${page}&type=${type}&mode=dataonly`,
+            true,
+        )
+    ).data.data
 }
 
 async function requestHitsCategoryAll(user: OfficialServerAuth, type: string) {
@@ -309,8 +314,7 @@ async function requestHitsCategoryAll(user: OfficialServerAuth, type: string) {
     let hasMore = true
 
     while (hasMore) {
-        const response =
-            await requestHitsCategory(user, type, page)
+        const response = await requestHitsCategory(user, type, page)
         hits.push(...response.Data.Hits)
         hasMore = response.Data.HasMore
         page++
@@ -497,9 +501,7 @@ export async function carryOverUserData(pId: string, gameVersion: GameVersion) {
     )
 
     // Escalations and Arcades
-    const escalationHits = oResp.ContractAttack.concat(oResp.Arcade)
-
-    for (const hit of escalationHits) {
+    for (const hit of oResp.ContractAttack.concat(oResp.Arcade)) {
         const Id = hit.Id
         userData.Extensions.PeacockEscalations[Id] =
             hit.UserCentricContract.Data.EscalationCompletedLevels + 1
@@ -509,20 +511,44 @@ export async function carryOverUserData(pId: string, gameVersion: GameVersion) {
         }
     }
 
-    for (const hit of oResp.MyHistory) {
-        userData.Extensions.PeacockPlayedContracts[hit.Id] = {
-            LastPlayedAt: new Date(hit.UserCentricContract.Data.LastPlayedAt)
-                .getTime(),
-            Completed: hit.UserCentricContract.Data.Completed,
-            IsEscalation: false,
+    const limit = getFlag("downloadContractHistoryLimit") as number
+
+    const toDownload = {
+        MyHistory: getFlag("downloadContractHistory") ? oResp.MyHistory : [],
+        MyContracts: getFlag("downloadMyContracts") ? oResp.MyContracts : [],
+        MyPlaylist: getFlag("downloadFavorites") ? oResp.MyPlaylist : [],
+    }
+
+    if (limit !== 0) {
+        toDownload.MyContracts = toDownload.MyContracts.slice(0, limit)
+    }
+
+    for (const hit of [
+        ...toDownload.MyContracts,
+        ...toDownload.MyPlaylist,
+        ...toDownload.MyHistory,
+    ]) {
+        await controller.downloadContract(
+            pId,
+            hit.UserCentricContract.Contract.Metadata.PublicId,
+            gameVersion,
+        )
+    }
+
+    if (getFlag("downloadContractHistory")) {
+        for (const hit of oResp.MyHistory) {
+            userData.Extensions.PeacockPlayedContracts[hit.Id] = {
+                LastPlayedAt: new Date(
+                    hit.UserCentricContract.Data.LastPlayedAt,
+                ).getTime(),
+                Completed: hit.UserCentricContract.Data.Completed,
+                IsEscalation: false,
+            }
         }
     }
 
-    for (const hit of oResp.MyPlaylist
-            .concat(oResp.MyContracts)) {
-        userData.Extensions.PeacockFavoriteContracts.push(
-            hit.Id,
-        )
+    for (const hit of [...toDownload.MyContracts, ...toDownload.MyPlaylist]) {
+        userData.Extensions.PeacockFavoriteContracts.push(hit.Id)
     }
 
     return userData
