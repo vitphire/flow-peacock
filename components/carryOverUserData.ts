@@ -16,11 +16,20 @@
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { CompiledChallengeRuntimeData, GameVersion, UserProfile } from "./types/types"
+import {
+    CompiledChallengeRuntimeData,
+    GameVersion,
+    MissionManifest,
+    RegistryChallenge,
+    UserProfile,
+} from "./types/types"
 import { OfficialServerAuth, userAuths } from "./officialServerAuth"
 import { log, LogLevel } from "./loggingInterop"
 import { missionsInLocations } from "./contracts/missionsInLocation"
 import { getVersionedConfig } from "./configSwizzleManager"
+import { controller } from "./controller"
+import { handleEvent } from "@peacockproject/statemachine-parser"
+import { StateMachineLike } from "@peacockproject/statemachine-parser/src/types"
 
 interface GetProfileBody {
     DevId: null | string
@@ -45,7 +54,7 @@ interface GetProfileBody {
     Extensions: {
         achievements: `${number}`[]
         friends: string[]
-        gameclient: null | unknown // TODO: get steam response
+        gameclient: null | unknown
         gamepersistentdata: {
             __stats?: unknown
             prologue: {
@@ -161,6 +170,29 @@ interface GetPlayerProfileBody {
         }
     }
 }
+interface HitsCategoryBody {
+    data: {
+        Category: string
+        Data: {
+            Type: string
+            Hits: {
+                Id: string
+                UserCentricContract: {
+                    Data: {
+                        EscalationCompletedLevels: number
+                        EscalationTotalLevels: number
+                        EscalationCompleted: boolean
+                        LastPlayedAt: string
+                        Completed: boolean
+                    }
+                    Contract: MissionManifest
+                }
+            }[]
+            Page: number
+            HasMore: boolean
+        }
+    }
+}
 
 async function requestGetProfile(user: OfficialServerAuth) {
     const response = await user._useService<GetProfileBody>(
@@ -238,7 +270,11 @@ async function requestChallenges(user: OfficialServerAuth) {
         promises.push(responseMapChallenges)
     }
 
-    const responses = await Promise.all(promises)
+    const responses = await Promise.all(promises).catch((e) => {
+        throw new Error(
+            `Error getting escalation contracts from official server: ${e}`,
+        )
+    })
     const challenges = new Map()
 
     for (const response of responses) {
@@ -257,6 +293,32 @@ async function requestChallenges(user: OfficialServerAuth) {
     return challenges
 }
 
+async function requestHitsCategory(user: OfficialServerAuth, type: string, page: number) {
+    return (await user._useService<
+        HitsCategoryBody
+    >(
+        "https://hm3-service.hitman.io/profiles/page/HitsCategory" +
+        `?page=${page}&type=${type}&mode=dataonly`,
+        true,
+    )).data.data
+}
+
+async function requestHitsCategoryAll(user: OfficialServerAuth, type: string) {
+    const hits: HitsCategoryBody["data"]["Data"]["Hits"] = []
+    let page = 0
+    let hasMore = true
+
+    while (hasMore) {
+        const response =
+            await requestHitsCategory(user, type, page)
+        hits.push(...response.Data.Hits)
+        hasMore = response.Data.HasMore
+        page++
+    }
+
+    return hits
+}
+
 async function getOfficialResponses(pId: string) {
     const user = userAuths.get(pId)
 
@@ -268,6 +330,11 @@ async function getOfficialResponses(pId: string) {
         GetProfile: await requestGetProfile(user),
         PlayerProfile: await requestPlayerProfile(user),
         Challenges: await requestChallenges(user),
+        ContractAttack: await requestHitsCategoryAll(user, "ContractAttack"),
+        Arcade: await requestHitsCategoryAll(user, "Arcade"),
+        MyHistory: await requestHitsCategoryAll(user, "MyHistory"),
+        MyContracts: await requestHitsCategoryAll(user, "MyContracts"),
+        MyPlaylist: await requestHitsCategoryAll(user, "MyPlaylist"),
     }
 }
 
@@ -397,8 +464,10 @@ export async function carryOverUserData(pId: string, gameVersion: GameVersion) {
         userData.Extensions.ChallengeProgression[
             challengeProgression.ChallengeId
         ] = {
-            Ticked: true,
             // Sometimes the server says a challenge is not completed, but it is.
+            Ticked:
+                challengeProgression.Completed ||
+                challengeProgression.CompletedAt !== null,
             Completed:
                 challengeProgression.Completed ||
                 challengeProgression.CompletedAt !== null,
@@ -407,7 +476,96 @@ export async function carryOverUserData(pId: string, gameVersion: GameVersion) {
         }
     }
 
+    // Fix for peacock-exclusive challenge 2546d4f7-191c-4858-840f-321d31aed410
+    userData.Extensions.ChallengeProgression[
+        "2546d4f7-191c-4858-840f-321d31aed410"
+    ] = getChallengeAfterAreasDiscovered(
+        "2546d4f7-191c-4858-840f-321d31aed410",
+        gameVersion,
+        [
+            "fa7b2877-3159-454a-82d3-422a0dd7e5da",
+            "7cfd6202-b3fb-4c9f-b3c2-c892b8031901",
+            "0a4513e4-338c-4328-ad72-82c1b5ff2a73",
+            "705c3917-9f3d-4444-a268-41e74bc8e4ad",
+            "ba0fe890-9feb-4991-82f8-5daf7aff3380",
+        ].filter(
+            (area) =>
+                oResp.GetProfile.Extensions.gamepersistentdata.PersistentBool[
+                    area
+                ] === true,
+        ),
+    )
+
+    // Escalations and Arcades
+    const escalationHits = oResp.ContractAttack.concat(oResp.Arcade)
+
+    for (const hit of escalationHits) {
+        const Id = hit.Id
+        userData.Extensions.PeacockEscalations[Id] =
+            hit.UserCentricContract.Data.EscalationCompletedLevels + 1
+
+        if (hit.UserCentricContract.Data.EscalationCompleted) {
+            userData.Extensions.PeacockCompletedEscalations.push(Id)
+        }
+    }
+
+    for (const hit of oResp.MyHistory) {
+        userData.Extensions.PeacockPlayedContracts[hit.Id] = {
+            LastPlayedAt: new Date(hit.UserCentricContract.Data.LastPlayedAt)
+                .getTime(),
+            Completed: hit.UserCentricContract.Data.Completed,
+            IsEscalation: false,
+        }
+    }
+
+    for (const hit of oResp.MyPlaylist
+            .concat(oResp.MyContracts)) {
+        userData.Extensions.PeacockFavoriteContracts.push(
+            hit.Id,
+        )
+    }
+
     return userData
+}
+
+function getChallengeAfterAreasDiscovered(
+    challengeId: string,
+    gameVersion: GameVersion,
+    areasDiscovered: string[],
+) {
+    // Get the challenge definition:
+    const challenge: RegistryChallenge =
+        controller.challengeService.getChallengeById(challengeId, gameVersion)
+    const definition = challenge.Definition
+    let state = "Start"
+    let context = definition.Context
+
+    for (const area of areasDiscovered) {
+        const result = handleEvent(
+            definition as StateMachineLike<
+                Partial<Record<string, unknown | string[] | string>>
+            >,
+            context,
+            {
+                RepositoryId: area,
+            },
+            {
+                timestamp: null,
+                eventName: "AreaDiscovered",
+                currentState: state,
+                timers: [],
+            },
+        )
+        state = result.state
+        context = result.context
+    }
+
+    return {
+        Ticked: false,
+        Completed: state === "Success",
+        CurrentState: state,
+        State: context,
+    }
 }
 
 // Helper function to loop over all missions
