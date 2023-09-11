@@ -126,7 +126,7 @@ const defaultFlags: Flags = {
         default: false,
     },
     downloadContractHistory: {
-        desc: `[Official Carry-over] When set to true, Peacock will download all contracts you have played in the past from the official servers. This will take some time the first time you load the game.`,
+        desc: `[Official Carry-over] When set to true, Peacock will download all contracts you have played in the past from the official servers. This will take some time the first time you load the game. Featured contracts not yet supported.`,
         default: false,
     },
     downloadContractHistoryLimit: {

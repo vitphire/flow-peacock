@@ -71,11 +71,20 @@ export async function logOfficialResponse(
         return
     }
 
-    const officialServerResponse = await user._useService(
-        officialUrl + req.originalUrl,
-        req.method === "GET",
-        req.body,
-    )
+    const officialServerResponse = await user
+        ._useService(
+            officialUrl + req.originalUrl,
+            req.method === "GET",
+            req.body,
+        )
+        .catch((e) => {
+            log(LogLevel.ERROR, `Failed to get official server response: ${e}`)
+            return undefined
+        })
+
+    if (!officialServerResponse) {
+        return
+    }
 
     const debug = {
         method: req.method,

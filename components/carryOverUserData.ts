@@ -31,6 +31,7 @@ import { controller } from "./controller"
 import { handleEvent } from "@peacockproject/statemachine-parser"
 import { StateMachineLike } from "@peacockproject/statemachine-parser/src/types"
 import { getFlag } from "./flags"
+import { getRemoteService } from "./utils"
 
 interface GetProfileBody {
     DevId: null | string
@@ -195,9 +196,9 @@ interface HitsCategoryBody {
     }
 }
 
-async function requestGetProfile(user: OfficialServerAuth) {
+async function requestGetProfile(user: OfficialServerAuth, remoteService) {
     const response = await user._useService<GetProfileBody>(
-        "https://hm3-service.hitman.io/authentication/api/userchannel" +
+        `https://${remoteService}.hitman.io/authentication/api/userchannel` +
             "/ProfileService/GetProfile",
         false,
         {
@@ -220,9 +221,9 @@ async function requestGetProfile(user: OfficialServerAuth) {
     }
 }
 
-async function requestPlayerProfile(user: OfficialServerAuth) {
+async function requestPlayerProfile(user: OfficialServerAuth, remoteService) {
     const response = await user._useService<GetPlayerProfileBody>(
-        "https://hm3-service.hitman.io/profiles/page/PlayerProfile",
+        `https://${remoteService}.hitman.io/profiles/page/PlayerProfile`,
         true,
     )
 
@@ -233,9 +234,13 @@ async function requestPlayerProfile(user: OfficialServerAuth) {
     }
 }
 
-function requestMapChallenges(user: OfficialServerAuth, location: string) {
+function requestMapChallenges(
+    user: OfficialServerAuth,
+    location: string,
+    remoteService,
+) {
     return user._useService<CompiledChallengeRuntimeData>(
-        "https://hm3-service.hitman.io/authentication/api/userchannel" +
+        `https://${remoteService}.hitman.io/authentication/api/userchannel` +
             "/ChallengesService/GetActiveChallengesAndProgression",
         false,
         {
@@ -245,7 +250,7 @@ function requestMapChallenges(user: OfficialServerAuth, location: string) {
     )
 }
 
-async function requestChallenges(user: OfficialServerAuth) {
+async function requestChallenges(user: OfficialServerAuth, remoteService) {
     /*
      This is probably not the most efficient way to do this, but I haven't
      found an endpoint that returns all challenges,
@@ -260,6 +265,7 @@ async function requestChallenges(user: OfficialServerAuth) {
         const responseMapChallenges = requestMapChallenges(
             user,
             locations[locationsKey],
+            remoteService,
         )
 
         log(
@@ -298,23 +304,33 @@ async function requestHitsCategory(
     user: OfficialServerAuth,
     type: string,
     page: number,
+    remoteService,
 ) {
     return (
         await user._useService<HitsCategoryBody>(
-            "https://hm3-service.hitman.io/profiles/page/HitsCategory" +
+            `https://${remoteService}.hitman.io/profiles/page/HitsCategory` +
                 `?page=${page}&type=${type}&mode=dataonly`,
             true,
         )
     ).data.data
 }
 
-async function requestHitsCategoryAll(user: OfficialServerAuth, type: string) {
+async function requestHitsCategoryAll(
+    user: OfficialServerAuth,
+    type: string,
+    remoteService,
+) {
     const hits: HitsCategoryBody["data"]["Data"]["Hits"] = []
     let page = 0
     let hasMore = true
 
     while (hasMore) {
-        const response = await requestHitsCategory(user, type, page)
+        const response = await requestHitsCategory(
+            user,
+            type,
+            page,
+            remoteService,
+        )
         hits.push(...response.Data.Hits)
         hasMore = response.Data.HasMore
         page++
@@ -323,27 +339,74 @@ async function requestHitsCategoryAll(user: OfficialServerAuth, type: string) {
     return hits
 }
 
-async function getOfficialResponses(pId: string) {
+async function requestFreelancerGetForPlay2(
+    user: OfficialServerAuth,
+    remoteService,
+) {
+    const response = await user._useService(
+        `https://${remoteService}.hitman.io/authentication/api/userchannel/ContractsService/GetForPlay2`,
+        false,
+        {
+            id: "f8ec92c2-4fa2-471e-ae08-545480c746ee",
+            locationId: "",
+            extraGameChangerIds: [],
+            difficultyLevel: 0,
+        },
+    )
+
+    if (response.status !== 200) {
+        throw new Error(
+            "Error getting freelancer CPD from official server." +
+                ` (${response.status})`,
+        )
+    } else {
+        return response.data
+    }
+}
+
+async function getOfficialResponses(pId: string, gameVersion: GameVersion) {
     const user = userAuths.get(pId)
 
     if (!user) {
         throw new Error("User not found.")
     }
 
+    const remoteService = getRemoteService(gameVersion)
+
     return {
-        GetProfile: await requestGetProfile(user),
-        PlayerProfile: await requestPlayerProfile(user),
-        Challenges: await requestChallenges(user),
-        ContractAttack: await requestHitsCategoryAll(user, "ContractAttack"),
-        Arcade: await requestHitsCategoryAll(user, "Arcade"),
-        MyHistory: await requestHitsCategoryAll(user, "MyHistory"),
-        MyContracts: await requestHitsCategoryAll(user, "MyContracts"),
-        MyPlaylist: await requestHitsCategoryAll(user, "MyPlaylist"),
+        GetProfile: await requestGetProfile(user, remoteService),
+        PlayerProfile: await requestPlayerProfile(user, remoteService),
+        Challenges: await requestChallenges(user, remoteService),
+        ContractAttack: await requestHitsCategoryAll(
+            user,
+            "ContractAttack",
+            remoteService,
+        ),
+        Arcade: await requestHitsCategoryAll(user, "Arcade", remoteService),
+        MyHistory: await requestHitsCategoryAll(
+            user,
+            "MyHistory",
+            remoteService,
+        ),
+        MyContracts: await requestHitsCategoryAll(
+            user,
+            "MyContracts",
+            remoteService,
+        ),
+        MyPlaylist: await requestHitsCategoryAll(
+            user,
+            "MyPlaylist",
+            remoteService,
+        ),
+        FreelancerGetForPlay2: await requestFreelancerGetForPlay2(
+            user,
+            remoteService,
+        ),
     }
 }
 
 export async function carryOverUserData(pId: string, gameVersion: GameVersion) {
-    const oResp = await getOfficialResponses(pId)
+    const oResp = await getOfficialResponses(pId, gameVersion)
 
     const userData = getVersionedConfig(
         "UserDefault",
@@ -528,11 +591,28 @@ export async function carryOverUserData(pId: string, gameVersion: GameVersion) {
         ...toDownload.MyPlaylist,
         ...toDownload.MyHistory,
     ]) {
-        await controller.downloadContract(
-            pId,
-            hit.UserCentricContract.Contract.Metadata.PublicId,
-            gameVersion,
-        )
+        if (controller.resolveContract(hit.Id)) {
+            continue
+        }
+
+        const publicId = hit.UserCentricContract.Contract.Metadata.PublicId
+
+        if (!/^[1-3]\d{2}\d{7}\d{2}$/.test(publicId)) {
+            log(
+                LogLevel.INFO,
+                `Skipping contract ${publicId} because it is not supported.`,
+            )
+            continue
+        }
+
+        await controller
+            .downloadContract(pId, publicId, gameVersion)
+            .catch((e) => {
+                log(
+                    LogLevel.ERROR,
+                    `Error downloading contract ${publicId}: ${e.message}`,
+                )
+            })
     }
 
     if (getFlag("downloadContractHistory")) {
