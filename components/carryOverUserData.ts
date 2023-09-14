@@ -345,32 +345,29 @@ async function requestGetForPlay2(
     missionId: string,
     remoteService: string,
 ) {
-    log(LogLevel.DEBUG, "Getting CPD from official server.")
-    await user
-        ._useService(
-            `https://${remoteService}.hitman.io/authentication/api/configuration/Init?configName=pc-prod&lockedContentDisabled=false&isFreePrologueUser=false&isIntroPackUser=false&isFullExperienceUser=true`,
-            true,
-        )
-        .catch((e) => {
-            return e.response
-        })
-    const response = await user
-        ._useService<{
+    log(
+        LogLevel.DEBUG,
+        "Getting CPD from official server.",
+    )
+    await user._useService(
+        `https://${remoteService}.hitman.io/authentication/api/configuration/Init?configName=pc-prod&lockedContentDisabled=false&isFreePrologueUser=false&isIntroPackUser=false&isFullExperienceUser=true`,
+        true,
+    ).catch((e) => {return e.response})
+    const response = await user._useService<
+        {
             ContractSessionId: string
             ContractProgressionData: CPDStore
-        }>(
-            `https://${remoteService}.hitman.io/authentication/api/userchannel/ContractsService/GetForPlay2`,
-            false,
-            {
-                id: missionId,
-                locationId: "",
-                extraGameChangerIds: [],
-                difficultyLevel: 0,
-            },
-        )
-        .catch((e) => {
-            return e.response
-        })
+        }
+    >(
+        `https://${remoteService}.hitman.io/authentication/api/userchannel/ContractsService/GetForPlay2`,
+        false,
+        {
+            id: missionId,
+            locationId: "",
+            extraGameChangerIds: [],
+            difficultyLevel: 0,
+        },
+    ).catch((e) => {return e.response})
 
     if (response.status !== 200) {
         throw new Error(
@@ -421,7 +418,7 @@ async function getOfficialResponses(pId: string, gameVersion: GameVersion) {
             [freelancerId]: await requestGetForPlay2(
                 user,
                 freelancerId,
-                remoteService,
+                remoteService
             ).catch((e) => {
                 log(
                     LogLevel.ERROR,
@@ -429,7 +426,7 @@ async function getOfficialResponses(pId: string, gameVersion: GameVersion) {
                 )
                 return undefined
             }),
-        },
+        }
     }
 }
 
@@ -661,9 +658,7 @@ export async function carryOverUserData(pId: string, gameVersion: GameVersion) {
 
     // Freelancer CPD
     for (const cpdId in oResp.CPD) {
-        if (!oResp.CPD[cpdId]) {
-            continue
-        }
+        if (!oResp.CPD[cpdId]) { continue }
 
         userData.Extensions.CPD[cpdId] = oResp.CPD[cpdId]
 
