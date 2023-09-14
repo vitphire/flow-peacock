@@ -1,94 +1,30 @@
-# The Peacock Project
+[Official Peacock Project GitHub repository](https://github.com/thepeacockproject/Peacock)
 
-[![Discord](https://img.shields.io/discord/826809653181808651?label=Discord&logo=discord&logoColor=white&style=for-the-badge)](https://discord.gg/peacock)
+# Flow-Peacock
+I made this project to carry over Hitman 3 progression from the official servers to Peacock.
 
-The Peacock Project is a HITMAN World of Assassination Trilogy server
-replacement.
-The primary purpose is preservation of the game, but it also adds new features
-and
-content to the game, and allows for other enhancements to be made while in
-online mode.
+This is NOT a part of the Peacock project. Please do not bother the Peacock devs with issues related to this project.
 
-## Installation
+## ❔ How to use
+The project is mainly intended to be a one-time use as I did not care about properly implementing update functionality.
 
-Install [Node.js](https://nodejs.org/en/). Use the Latest version, or the
-version
-specifically mentioned here: **Version 18**
+Steps:
+1. If you played with peacock already, back up your save file. I might make a save file merger, but even if I don't, it's always good to avoid deleting your stuff.
+2. Setup this version just like you would the official version. make sure to copy your options, and configure the new options according to your preferences.
+3. Upon first launch, the game should automatically detect that you don't have a savefile yet, and will attempt to make requests to the official servers and compile a save file for you. If something goes wrong, delete the `userdata` folder and try again. If it still doesn't work, dm me on discord ([@vitphire](https://discordapp.com/users/vitphire)).
+4. If everything went well, you should be able to play the game with your official progression.
+5. You can (and should) go back to the official Peacock branch by backing up the userdata folder and pasting it back after setting up the official version.
 
-Clone the repository where-ever you wish.
+## ⚠ Warnings
+- Scraping the save data from the official servers is not officially supported by IOI, and therefore the code has to make a lot of requests. I'll try to make it less in the future.
+- The sniper gamemode's progression is not carried over yet. I'll try to add it in the future.
 
-Open Windows terminal **AS ADMINISTRATOR**.
-
-Install Yarn, by typing:
-
-> corepack enable
-
-Then move to the folder where you cloned the repo to by using:
-
-> cd Folder/Path/Here
-
-then install the dependencies by using:
-
-> yarn install
-
-## Usage
-
-The project is bundled with a server running configuration.
-Run that when editing the project with the IDE of choice, and it should open.
-
-We highly suggest you use [WebStorm](https://www.jetbrains.com/webstorm/) for
-development,
-but it is a paid product, so you may want to choose something
-like [Visual Studio Code](https://code.visualstudio.com/).
-WebStorm will provide a better experience for development, but VSCode will work
-just fine.
-
-## Contributing
-
-To contribute, you can use Pull Requests from your own fork. You can fix bugs
-reported in issues or add new features you think would be useful, new features
-not listed in issues would have to be discussed before merging.
-
-### Localisation
-
-#### Automated
-
-The Peacock repository has an automated workflow to rebuild locale packages.
-All you need to do to update localisation files is:
-
-1. Edit `locale.json`.
-    - If you're adding new strings, make sure to add the English versions to
-      all languages.
-    - If you're translating existing strings, you only need to translate the
-      ones that are in the language(s) you are translating.
-2. Then push `locale.json`.
-3. Then, make a Pull Request. When it is reviewed and merged, locale packages
-   will automatically be rebuilt.
-
-#### Manual
-
-If you need to manually rebuild locale packages for whatever reason (testing
-or otherwise), follow steps 1 and 2 above, then do the following:
-
-1. Make sure `rpkg_cli.exe`, `HMLanguageTools.exe`, and `ResourceLib_*.dll` are
-   in the `resources` folder.
-2. Then, from the root project folder, run `yarn rebuild-locale`.
-3. These generated RPKGs should **not** be pushed or merged into Peacock as
-   the automated workflow will take care of this for you.
-
-Thank you to people who have contributed!
-
-## License
-
-Peacock is under the AGPL-3.0 license, see the license file for more info.
-
-## Credits
-
-Peacock started off as a fork
-of [LocalGhost](https://gitlab.com/grappigegovert/LocalGhost)
-by grappigegovert, and has since been rewritten in TypeScript, and a whole host
-of new features have been added. The codebase has been relicensed to AGPL-3.0
-with explicit permission from grappigegovert.
-
-The game is owned by [IO Interactive](https://ioi.dk), and is not affiliated
-with this project in any way.
+## 🛠 Config options
+- `downloadContractHistory`: When set to true, this will download all contracts in your history (you can find it by going to Game modes > Contracts > History). This is useful if you want to play contracts that you played on the official servers, but it will take a while to download all of them.
+_(Default: false)_
+- `downloadContractHistoryLimit`: The maximum number of contracts to download from your history. Set to 0 to download all of them.
+_(Default: 0)_
+- `downloadMyContracts`: When set to true, this will download all contracts that you created. They will show up as Favorites, because Peacock shows all downloaded contracts in the My Contracts tab.
+_(Default: false)_
+- `downloadFavorites`: When set to true, this will download all contracts that you favorited. They will also show up both in the My Contracts tab and in the Favorites tab.
+_(Default: true)_
