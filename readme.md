@@ -5,15 +5,15 @@ I made this project to carry over Hitman 3 progression from the official servers
 
 This is NOT a part of the Peacock project. Please do not bother the Peacock devs with issues related to this project.
 
-## ❔ How to use
+## ❔ Usage
 The project is mainly intended to be a one-time use as I did not care about properly implementing update functionality.
 
 Steps:
-1. If you played with peacock already, back up your save file. I might make a save file merger, but even if I don't, it's always good to avoid deleting your stuff.
-2. Setup this version just like you would the official version. make sure to copy your options, and configure the new options according to your preferences.
+1. If you have played with peacock already, back up your save file. I might make a save file merger, but even if I don't, it's always good to avoid deleting your stuff.
+2. Set up this version just like you would the official version. Don't forget to copy the options you changed, and configure the new options according to your preferences.
 3. Upon first launch, the game should automatically detect that you don't have a savefile yet, and will attempt to make requests to the official servers and compile a save file for you. If something goes wrong, delete the `userdata` folder and try again. If it still doesn't work, dm me on discord ([@vitphire](https://discord.com/users/483930002405195776)).
 4. If everything went well, you should be able to play the game with your official progression.
-5. You can (and should) go back to the official Peacock branch by backing up the userdata folder and pasting it back after setting up the official version.
+5. You can (and should) go back to the official Peacock branch by backing up the `userdata` folder and pasting it back after setting up the official version.
 
 ## ⚠ Warnings
 - Scraping the save data from the official servers is not officially supported by IOI, and therefore the code has to make a lot of requests. I'll try to make it less in the future.
