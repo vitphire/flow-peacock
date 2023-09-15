@@ -197,7 +197,10 @@ interface HitsCategoryBody {
     }
 }
 
-async function requestGetProfile(user: OfficialServerAuth, remoteService: string) {
+async function requestGetProfile(
+    user: OfficialServerAuth,
+    remoteService: string,
+) {
     const response = await user._useService<GetProfileBody>(
         `https://${remoteService}.hitman.io/authentication/api/userchannel` +
             "/ProfileService/GetProfile",
@@ -222,7 +225,10 @@ async function requestGetProfile(user: OfficialServerAuth, remoteService: string
     }
 }
 
-async function requestPlayerProfile(user: OfficialServerAuth, remoteService: string) {
+async function requestPlayerProfile(
+    user: OfficialServerAuth,
+    remoteService: string,
+) {
     const response = await user._useService<GetPlayerProfileBody>(
         `https://${remoteService}.hitman.io/profiles/page/PlayerProfile`,
         true,
@@ -251,7 +257,10 @@ function requestMapChallenges(
     )
 }
 
-async function requestChallenges(user: OfficialServerAuth, remoteService: string) {
+async function requestChallenges(
+    user: OfficialServerAuth,
+    remoteService: string,
+) {
     /*
      This is probably not the most efficient way to do this, but I haven't
      found an endpoint that returns all challenges,
