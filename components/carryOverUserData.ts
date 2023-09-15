@@ -199,6 +199,7 @@ interface HitsCategoryBody {
 
 async function requestGetProfile(
     user: OfficialServerAuth,
+    pId: string,
     remoteService: string,
 ) {
     const response = await user._useService<GetProfileBody>(
@@ -206,7 +207,7 @@ async function requestGetProfile(
             "/ProfileService/GetProfile",
         false,
         {
-            id: "22ebbd4b-062f-4321-81b8-03f74ab161bc",
+            id: pId,
             extensions: [
                 "achievements",
                 "friends",
@@ -402,7 +403,7 @@ async function getOfficialResponses(pId: string, gameVersion: GameVersion) {
     const freelancerId = "f8ec92c2-4fa2-471e-ae08-545480c746ee"
 
     return {
-        GetProfile: await requestGetProfile(user, remoteService),
+        GetProfile: await requestGetProfile(user, pId, remoteService),
         PlayerProfile: await requestPlayerProfile(user, remoteService),
         Challenges: await requestChallenges(user, remoteService),
         ContractAttack: await requestHitsCategoryAll(
