@@ -38,18 +38,11 @@ import type {
     RegistryChallenge,
     RequestWithJwt,
     S2CEventWithTimestamp,
-    SMFLastDeploy,
     Unlockable,
     UserCentricContract,
 } from "./types/types"
 import type * as configManagerType from "./configSwizzleManager"
-import {
-    configs,
-    getConfig,
-    getSwizzleable,
-    getVersionedConfig,
-    swizzle,
-} from "./configSwizzleManager"
+import { configs, getConfig, getVersionedConfig } from "./configSwizzleManager"
 import { log, LogLevel } from "./loggingInterop"
 import * as axios from "axios"
 import {
@@ -60,7 +53,6 @@ import {
     versions,
 } from "./utils"
 import { AsyncSeriesHook, SyncBailHook, SyncHook } from "./hooksImpl"
-import { menuSystemDatabase } from "./menus/menuSystem"
 import { parse } from "json5"
 import { userAuths } from "./officialServerAuth"
 // @ts-expect-error Ignore JSON import
@@ -84,6 +76,7 @@ import { ProgressionService } from "./candle/progressionService"
 import generatedPeacockRequireTable from "./generatedPeacockRequireTable"
 import { escalationTypes } from "./contracts/escalations/escalationService"
 import { orderedETAs } from "./contracts/elusiveTargetArcades"
+import { SMFSupport } from "./smfSupport"
 
 /**
  * An array of string arrays that contains the IDs of the featured contracts.
@@ -250,14 +243,14 @@ export const validateMission = (m: MissionManifest): boolean => {
     }
 
     for (const prop of ["Id", "Title", "Location", "ScenePath"]) {
-        if (!Object.prototype.hasOwnProperty.call(m.Metadata, prop)) {
+        if (!Object.hasOwn(m.Metadata, prop)) {
             log(LogLevel.ERROR, `Contract missing property Metadata.${prop}!`)
             return false
         }
     }
 
     for (const prop of ["Objectives", "Bricks"]) {
-        if (!Object.prototype.hasOwnProperty.call(m.Data, prop)) {
+        if (!Object.hasOwn(m.Data, prop)) {
             log(LogLevel.ERROR, `Contract missing property Data.${prop}!`)
             return false
         }
@@ -311,15 +304,6 @@ function registerInternals(contracts: MissionManifest[]): void {
     }
 }
 
-const modFrameworkDataPath: string | false =
-    (process.env.LOCALAPPDATA &&
-        join(
-            process.env.LOCALAPPDATA,
-            "Simple Mod Framework",
-            "lastDeploy.json",
-        )) ||
-    false
-
 export class Controller {
     public hooks: {
         serverStart: SyncHook<[]>
@@ -371,9 +355,7 @@ export class Controller {
     public configManager: typeof configManagerType = {
         getConfig,
         configs,
-        getSwizzleable,
         getVersionedConfig,
-        swizzle,
     }
     public missionsInLocations = missionsInLocations
     /**
@@ -389,10 +371,7 @@ export class Controller {
     public masteryService: MasteryService
     escalationMappings: Map<string, Record<string, string>> = new Map()
     public progressionService: ProgressionService
-    /**
-     * A list of Simple Mod Framework mods installed.
-     */
-    public readonly installedMods: readonly string[]
+    public smf: SMFSupport
     private _pubIdToContractId: Map<string, string> = new Map()
     /** Internal elusive target contracts - only accessible during bootstrap. */
     private _internalElusives: MissionManifest[] | undefined
@@ -416,30 +395,6 @@ export class Controller {
             getNextCampaignMission: new SyncBailHook(),
             onMissionEnd: new SyncHook(),
         }
-
-        if (modFrameworkDataPath && existsSync(modFrameworkDataPath)) {
-            this.installedMods = (
-                parse(
-                    readFileSync(modFrameworkDataPath!).toString(),
-                ) as SMFLastDeploy
-            )?.loadOrder as readonly string[]
-            return
-        }
-
-        this.installedMods = []
-    }
-
-    /**
-     * Returns whether a mod is available and installed.
-     *
-     * @param modId The mod's ID.
-     * @returns If the mod is available (or the `overrideFrameworkChecks` flag is set). You should probably abort initialisation if false is returned.
-     */
-    public modIsInstalled(modId: string): boolean {
-        return (
-            this.installedMods.includes(modId) ||
-            getFlag("overrideFrameworkChecks") === true
-        )
     }
 
     /**
@@ -465,143 +420,16 @@ export class Controller {
         this.challengeService = new ChallengeService(this)
         this.masteryService = new MasteryService()
         this.progressionService = new ProgressionService()
+        this.smf = new SMFSupport(this)
 
         this._addElusiveTargets()
         this._getETALocations()
         this.index()
 
-        if (modFrameworkDataPath && existsSync(modFrameworkDataPath)) {
-            log(
-                LogLevel.INFO,
-                "Simple Mod Framework installed - using the data it outputs.",
-                "boot",
-            )
+        const deployPath = SMFSupport.modFrameworkDataPath
 
-            const lastServerSideData = (
-                parse(
-                    readFileSync(modFrameworkDataPath!).toString(),
-                ) as SMFLastDeploy
-            ).lastServerSideStates
-
-            if (lastServerSideData?.unlockables) {
-                this.configManager.configs["allunlockables"] =
-                    lastServerSideData.unlockables.slice(1)
-            }
-
-            if (lastServerSideData?.contracts) {
-                for (const contractData of Object.values(
-                    lastServerSideData.contracts,
-                )) {
-                    this.addMission(contractData)
-
-                    if (contractData.SMF?.destinations?.addToDestinations) {
-                        if (
-                            typeof contractData.SMF.destinations
-                                .peacockIntegration === "undefined" ||
-                            contractData.SMF.destinations.peacockIntegration
-                        ) {
-                            if (contractData.SMF.destinations.placeBefore) {
-                                controller.missionsInLocations[
-                                    contractData.Metadata.Location
-                                ].splice(
-                                    controller.missionsInLocations[
-                                        contractData.Metadata.Location
-                                    ].indexOf(
-                                        contractData.SMF.destinations
-                                            .placeBefore,
-                                    ),
-                                    0,
-                                    contractData.Metadata.Id,
-                                )
-                            } else if (
-                                contractData.SMF.destinations.placeAfter
-                            ) {
-                                controller.missionsInLocations[
-                                    contractData.Metadata.Location
-                                ].splice(
-                                    controller.missionsInLocations[
-                                        contractData.Metadata.Location
-                                    ].indexOf(
-                                        contractData.SMF.destinations
-                                            .placeAfter,
-                                    ) + 1,
-                                    0,
-                                    contractData.Metadata.Id,
-                                )
-                            } else {
-                                controller.missionsInLocations[
-                                    contractData.Metadata.Location
-                                ].push(contractData.Metadata.Id)
-                            }
-                        }
-                    }
-
-                    if (contractData.SMF.destinations?.addToDestinations) {
-                        if (contractData.SMF.destinations.peacockIntegration) {
-                            if (contractData.SMF.destinations.placeBefore) {
-                                controller.missionsInLocations[
-                                    contractData.Metadata.Location
-                                ].splice(
-                                    controller.missionsInLocations[
-                                        contractData.Metadata.Location
-                                    ].indexOf(
-                                        contractData.SMF.destinations
-                                            .placeBefore,
-                                    ),
-                                    0,
-                                    contractData.Metadata.Id,
-                                )
-                            } else if (
-                                contractData.SMF.destinations.placeAfter
-                            ) {
-                                controller.missionsInLocations[
-                                    contractData.Metadata.Location
-                                ].splice(
-                                    controller.missionsInLocations[
-                                        contractData.Metadata.Location
-                                    ].indexOf(
-                                        contractData.SMF.destinations
-                                            .placeAfter,
-                                    ) + 1,
-                                    0,
-                                    contractData.Metadata.Id,
-                                )
-                            } else {
-                                controller.missionsInLocations[
-                                    contractData.Metadata.Location
-                                ].push(contractData.Metadata.Id)
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (lastServerSideData?.blobs) {
-                menuSystemDatabase.hooks.getConfig.tap(
-                    "SMFBlobs",
-                    (name, gameVersion) => {
-                        if (
-                            gameVersion === "h3" &&
-                            (lastServerSideData.blobs[name] ||
-                                lastServerSideData.blobs[name.slice(1)]) // leading slash is not included in SMF blobs
-                        ) {
-                            return parse(
-                                readFileSync(
-                                    join(
-                                        process.env.LOCALAPPDATA,
-                                        "Simple Mod Framework",
-                                        "blobs",
-                                        lastServerSideData.blobs[name] ||
-                                            lastServerSideData.blobs[
-                                                name.slice(1)
-                                            ],
-                                    ),
-                                ).toString(),
-                            )
-                        }
-                    },
-                )
-            }
+        if (typeof deployPath === "string") {
+            await this.smf.initSMFSupport(deployPath)
         }
 
         await this._loadPlugins()
@@ -1148,7 +976,7 @@ export class Controller {
                 const sourceFile = join(process.cwd(), "plugins", plugin)
                 const src = (await readFile(sourceFile)).toString()
 
-                await this._executePlugin(plugin, src, sourceFile)
+                await this.executePlugin(plugin, src, sourceFile)
             }
         }
 
@@ -1159,7 +987,7 @@ export class Controller {
         for (const plugin of entries) {
             const src = (await readFile(plugin)).toString()
 
-            await this._executePlugin(plugin, src, join(process.cwd(), plugin))
+            await this.executePlugin(plugin, src, join(process.cwd(), plugin))
         }
     }
 
@@ -1183,11 +1011,11 @@ export class Controller {
                 format: "cjs",
             })
 
-            await this._executePlugin(plugin, builtPlugin.code, sourceFile)
+            await this.executePlugin(plugin, builtPlugin.code, sourceFile)
         }
     }
 
-    private async _executePlugin(
+    public async executePlugin(
         pluginName: string,
         pluginContents: string,
         pluginPath: string,
